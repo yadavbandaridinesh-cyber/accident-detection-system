@@ -231,4 +231,8 @@ def logout():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True)
+    # Get port from environment variable for deployment (Render, Railway, etc.)
+    port = int(os.environ.get('PORT', 5000))
+    # Bind to 0.0.0.0 for deployment, 127.0.0.1 for local development
+    host = '0.0.0.0' if os.environ.get('PORT') else '127.0.0.1'
+    app.run(host=host, port=port, debug=os.environ.get('FLASK_DEBUG', 'True') == 'True')
