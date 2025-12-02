@@ -18,6 +18,7 @@ import mimetypes
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # Disable warning in production
 # Path to save uploaded images
 UPLOAD_FOLDER = 'uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -107,21 +108,39 @@ def home():
     return render_template('home.html')
 
 # Load the pre-trained YOLOv8 model
-model = YOLO('best.pt')
+try:
+    model = YOLO('best.pt')
+    print("✅ YOLO model loaded successfully")
+except Exception as e:
+    print(f"❌ Error loading YOLO model: {e}")
+    model = None
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
     if request.method == 'POST':
-        # Get the uploaded file
-        uploaded_file = request.files['image_file']
+        try:
+            # Check if model is loaded
+            if model is None:
+                flash('Model not loaded. Please contact administrator.', 'danger')
+                return render_template('upload.html')
 
-        if uploaded_file.filename != '':
+            # Get the uploaded file
+            uploaded_file = request.files.get('image_file')
+
+            if not uploaded_file or uploaded_file.filename == '':
+                flash('No file selected. Please upload an image.', 'warning')
+                return render_template('upload.html')
+
             # Save the uploaded file
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], uploaded_file.filename)
             uploaded_file.save(file_path)
 
             # Read the image using OpenCV
             image = cv2.imread(file_path)
+
+            if image is None:
+                flash('Invalid image file. Please upload a valid image.', 'danger')
+                return render_template('upload.html')
 
             # Perform inference using YOLOv8
             results = model(image)
@@ -162,10 +181,19 @@ def upload():
 
             # Send email notification if an accident is detected
             if accident_detected:
-                send_email_notification(uploaded_file.filename)
-                print("Send")
+                try:
+                    send_email_notification(uploaded_file.filename)
+                    print("Email sent successfully")
+                except Exception as email_error:
+                    print(f"Email notification failed: {email_error}")
+                    # Continue even if email fails
 
             return render_template('upload.html', result_image=url_for('uploaded_file', filename='result_' + uploaded_file.filename), detection_message=detection_message)
+
+        except Exception as e:
+            print(f"Error processing image: {e}")
+            flash(f'An error occurred while processing the image: {str(e)}', 'danger')
+            return render_template('upload.html')
 
     # If it's a GET request, render the upload form
     return render_template('upload.html')
